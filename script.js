@@ -158,10 +158,10 @@ nn.on("load", () => {
     // Go through each level //
     platformArray.forEach((level, levelHeight) => {
       // Return if its empty //
-      if (level.length == 0) return;
+      if (level.length === 0) return;
 
       // Add single block //
-      if (level.length == 1) {
+      if (level.length === 1) {
         add([
           pos(0, levelHeight * height),
           sprite(`${type}-round`),
@@ -221,7 +221,7 @@ nn.on("load", () => {
           // Add Postal Office //
           if (
             level[platform] === level[platform].toUpperCase() &&
-            level[platform] != " "
+            level[platform] !== " "
           ) {
             add([
               pos(platform * 199, levelHeight * height - 100),
