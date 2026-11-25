@@ -4,7 +4,7 @@ nn.on("load", () => {
   });
 
   // Enable Gravity //
-  setGravity(1200);
+  setGravity(1100);
 
   // Load Audio Files //
   loadSound("collect", "media/audio/collect.wav");
@@ -13,8 +13,11 @@ nn.on("load", () => {
 
   // Load Sprites //
   loadSprite("player", "media/sprites/postal-worker.png");
+  loadSprite("player-walk", "media/sprites/postal-worker-walk-2.png");
   loadSprite("envelope", "media/sprites/envelope.png");
   loadSprite("shippingBox", "media/sprites/shipping-box.png");
+  loadSprite("postalOfficeClosed", "media/sprites/post-office-closed.png");
+  loadSprite("postalOfficeOpen", "media/sprites/post-office-open.png");
 
   // Start Background Music //
   play("soundtrack", {
@@ -24,6 +27,8 @@ nn.on("load", () => {
 
   // Levels //
   const levels = ["air", "land", "water"];
+  const numLevels = 7;
+  const levelWidth = 20;
 
   // Player //
   const player = add([
@@ -58,11 +63,19 @@ nn.on("load", () => {
   // Moving Left //
   player.onKeyDown("a", () => {
     player.move(-player.speed, 0);
+    if (player.isGrounded()) {
+      player.flipX = true;
+      player.sprite = "player-walk";
+    }
   });
 
   // Moving Right //
   player.onKeyDown("d", () => {
     player.move(player.speed, 0);
+    if (player.isGrounded()) {
+      player.sprite = "player-walk";
+      player.flipX = false;
+    }
   });
 
   // Jumping //
@@ -73,12 +86,59 @@ nn.on("load", () => {
         volume: 0.5,
       });
       player.jump(800);
+      player.sprite = "player";
     }
   });
 
-  // Testing for Level Building //
-  player.onKeyPress("f", () => {
-    console.log(`${player.pos.x}, ${player.pos.y}`);
+  player.onKeyDown("w", () => {
+    // Only if player is touching the ground //
+    if (player.isGrounded()) {
+      play("jump", {
+        volume: 0.5,
+      });
+      player.jump(800);
+      player.sprite = "player";
+    }
+  });
+
+  // Jump Cancel //
+  player.onKeyDown("shift", () => {
+    if (!player.isGrounded()) {
+      player.vel.y = 600;
+    }
+  });
+
+  player.onKeyDown("s", () => {
+    if (!player.isGrounded()) {
+      player.vel.y = 600;
+    }
+  });
+
+  // Gamepad Movement //
+  player.onGamepadStick("left", (value) => {
+    player.move(player.speed * value.x, 0);
+    if (player.isGrounded() && Math.round(value.x) != 0) {
+      player.flipX = value.x < 0;
+      player.sprite = "player-walk";
+    }
+  });
+
+  // Gamepad Jump //
+  player.onGamepadButtonPress("south", () => {
+    if (player.isGrounded()) {
+      play("jump", {
+        volume: 0.5,
+      });
+      player.jump(800);
+      player.sprite = "player";
+    }
+  });
+
+  // Gamepad Jump Cancel //
+  player.onGamepadButtonPress("east", () => {
+    if (!player.isGrounded()) {
+      player.vel.y = 600;
+    }
   });
 
   // Collecting Package //
@@ -98,7 +158,7 @@ nn.on("load", () => {
 
     // Change Office Status //
     if (packageCounter.value === 0) {
-      get("office")[0].color = rgb(48, 145, 53);
+      get("office")[0].sprite = "postalOfficeOpen";
     }
   });
 
@@ -110,17 +170,18 @@ nn.on("load", () => {
   // End The Game //
   player.onCollide("office", () => {
     if (!packageCounter.value) {
-      // Stop Timer //
-      timer.isRunning = false;
-
       // Destroy Packages //
       get("collectable").forEach((package) => {
         destroy(package);
       });
 
       // Move to the next Level //
-      player.level++;
-      go(levels[player.level]);
+      if (player.level < 2) {
+        player.level++;
+        go(levels[player.level]);
+      } else {
+        timer.isRunning = false;
+      }
     }
   });
 
@@ -153,7 +214,7 @@ nn.on("load", () => {
 
   // Generate Platforms //
   function generatePlatforms(platformArray, type) {
-    const height = 220;
+    const height = 250;
 
     // Go through each level //
     platformArray.forEach((level, levelHeight) => {
@@ -224,11 +285,11 @@ nn.on("load", () => {
             level[platform] !== " "
           ) {
             add([
-              pos(platform * 199, levelHeight * height - 100),
-              rect(100, 100),
-              color(145, 145, 145),
+              sprite("postalOfficeClosed"),
+              scale(1 / 7),
+              pos(platform * 199, levelHeight * height - 140),
               area(),
-              body({ isStatic: true }),
+              z(-1),
               "office",
             ]);
           }
@@ -242,89 +303,310 @@ nn.on("load", () => {
 
   scene("air", () => {
     // Load Sprites //
+    loadSprite("skyscraper", "media/obstacles/skyscraper.png");
     loadSprite("bird", "media/enemies/bird.png");
     loadSprite("cloud-round", "media/platforms/cloud/cloud-round.png");
     loadSprite("cloud-sharp-r", "media/platforms/cloud/cloud-sharp-r.png");
     loadSprite("cloud-sharp-l", "media/platforms/cloud/cloud-sharp-l.png");
     loadSprite("cloud-sharp", "media/platforms/cloud/cloud-sharp.png");
+    loadSprite("background", "media/backgrounds/sky-bg.png");
+
+    // Set Background //
+    add([sprite("background"), pos(-1000, -1000), z(-10)]);
 
     // Set Package Counter //
-    packageCounter.value = 2;
+    packageCounter.value = 3;
     packageCounter.text = `Remaining Packages: ${packageCounter.value}`;
 
     // Add Platforms //
-    generatePlatforms(
-      ["lmmr  lmr s", "  lmr  lmmr", "lmr lmr lmr lmr", "s  s  s  s  lmR"],
-      "cloud",
-    );
-    // Add Decorations //
+    let genArr = [];
+    // Add 7 Levels
+    for (let i = 0; i < numLevels; i++) {
+      let str = "";
+      let lastValue = "";
 
-    // Add Obstacles //
+      // Prodecurally generate random tiles //
+      for (let j = 0; j < levelWidth; j++) {
+        if (lastValue == "l" || lastValue == "m") {
+          str += ["m", "r", "r"][randi(3)];
+        } else if (lastValue == "r" || lastValue == "s") {
+          str += " ";
+        } else {
+          str += ["l", " ", "s", " ", "l"][randi(5)];
+        }
+        lastValue = str[str.length - 1];
+      }
+      genArr.push(str);
+    }
 
-    // Add Enemy //
-    add([sprite("bird"), scale(1 / 8), pos(400, -50), area(), "obstacle"]);
-    add([sprite("bird"), scale(1 / 8), pos(1750, 170), area(), "obstacle"]);
+    // Place a Post Office at the end //
+    let postOfficeSelection = randi(genArr[0].length);
+    while (genArr[genArr.length - 1][postOfficeSelection] == " ") {
+      postOfficeSelection = randi(genArr[0].length);
+    }
+    genArr[genArr.length - 1] =
+      genArr[genArr.length - 1].slice(0, postOfficeSelection) +
+      genArr[genArr.length - 1][postOfficeSelection].toUpperCase() +
+      genArr[genArr.length - 1].slice(postOfficeSelection + 1);
+    generatePlatforms(genArr, "cloud");
 
-    // Add Packages //
-    add([
-      sprite("envelope"),
-      pos(2200, 160),
-      scale(1 / 10),
-      area(),
-      "collectable",
-    ]);
+    // Prodcedurally Generate Packages, Obstacles, and Enemies //
+    let obstacleArr = [];
+    for (let i = 0; i < numLevels; i++) {
+      obstacleArr.push([]);
+    }
+    obstacleArr[0][0] = "p";
+    let packagesNeeded = packageCounter.value;
+    let obstaclesNeeded = 8;
+    let enemiesNeeded = 15;
 
-    add([
-      sprite("shippingBox"),
-      pos(-540, 410),
-      scale(1 / 10),
-      area(),
-      "collectable",
-    ]);
+    while (packagesNeeded || obstaclesNeeded || enemiesNeeded) {
+      let randomLevel = randi(numLevels);
+      let randomPos = randi(levelWidth);
+      if (
+        genArr[randomLevel][randomPos] ===
+        genArr[randomLevel][randomPos].toUpperCase()
+      )
+        continue;
+      if (obstacleArr[randomLevel][randomPos]) continue;
+      if (packagesNeeded) {
+        add([
+          sprite("envelope"),
+          pos(randomPos * 199, randomLevel * 250 - 40),
+          scale(1 / 10),
+          area(),
+          "collectable",
+        ]);
+        obstacleArr[randomLevel][randomPos] = "c";
+        packagesNeeded--;
+      } else if (obstaclesNeeded) {
+        add([
+          sprite("skyscraper"),
+          scale(1 / 7),
+          pos(randomPos * 199, randomLevel * 250 - 200),
+          area(),
+          "obstacle",
+          z(-1),
+        ]);
+        obstacleArr[randomLevel][randomPos] = "o";
+        obstaclesNeeded--;
+      } else if (enemiesNeeded) {
+        add([
+          sprite("bird"),
+          scale(1 / 8),
+          pos(randomPos * 199, randomLevel * 250 - 40 - randi(100)),
+          area(),
+          "obstacle",
+        ]);
+        obstacleArr[randomLevel][randomPos] = "e";
+        enemiesNeeded--;
+      }
+    }
   });
 
   scene("land", () => {
+    resetPlayer();
     // Load Sprites //
     loadSprite("grass-round", "media/platforms/grass/grass-round.png");
     loadSprite("grass-sharp-l", "media/platforms/grass/grass-sharp-r.png");
     loadSprite("grass-sharp-r", "media/platforms/grass/grass-sharp-l.png");
     loadSprite("grass-sharp", "media/platforms/grass/grass-sharp.png");
+    loadSprite("thornBush", "media/obstacles/thorn-bush.png");
+    loadSprite("dog", "media/enemies/dog.png");
+    loadSprite("background", "media/backgrounds/land-bg.png");
+
+    // Set Background //
+    add([sprite("background"), pos(-1000, -1000), z(-10)]);
 
     // Set Package Counter //
-    packageCounter.value = 4;
+    packageCounter.value = 3;
     packageCounter.text = `Remaining Packages: ${packageCounter.value}`;
 
     // Add Platforms //
-    generatePlatforms(["lmmmmmmMr"], "grass");
+    let genArr = [];
+    // Add 7 Levels
+    for (let i = 0; i < numLevels; i++) {
+      let str = "";
+      let lastValue = "";
 
-    // Add Decorations //
-    setBackground(77, 163, 255);
+      // Prodecurally generate random tiles //
+      for (let j = 0; j < levelWidth; j++) {
+        if (lastValue == "l" || lastValue == "m") {
+          str += ["m", "r", "r"][randi(3)];
+        } else if (lastValue == "r" || lastValue == "s") {
+          str += " ";
+        } else {
+          str += ["l", " ", "s", " ", "l"][randi(5)];
+        }
+        lastValue = str[str.length - 1];
+      }
+      genArr.push(str);
+    }
+    let postOfficeSelection = randi(genArr[0].length);
+    while (genArr[genArr.length - 1][postOfficeSelection] == " ") {
+      postOfficeSelection = randi(genArr[0].length);
+    }
+    genArr[genArr.length - 1] =
+      genArr[genArr.length - 1].slice(0, postOfficeSelection) +
+      genArr[genArr.length - 1][postOfficeSelection].toUpperCase() +
+      genArr[genArr.length - 1].slice(postOfficeSelection + 1);
+    generatePlatforms(genArr, "grass");
 
-    // Add Obstacles //
+    // Prodcedurally Generate Packages, Obstacles, and Enemies //
+    let obstacleArr = [[], [], [], [], [], [], []];
+    obstacleArr[0][0] = "p";
+    let packagesNeeded = packageCounter.value;
+    let obstaclesNeeded = 8;
+    let enemiesNeeded = 15;
 
-    // Add Enemies //
-
-    // Add Packages //
-
-    // Add Postal Office //
+    while (packagesNeeded || obstaclesNeeded || enemiesNeeded) {
+      let randomLevel = randi(numLevels);
+      let randomPos = randi(levelWidth);
+      if (
+        genArr[randomLevel][randomPos] ===
+        genArr[randomLevel][randomPos].toUpperCase()
+      )
+        continue;
+      if (obstacleArr[randomLevel][randomPos]) continue;
+      if (packagesNeeded) {
+        add([
+          sprite("envelope"),
+          pos(randomPos * 199, randomLevel * 250 - 40),
+          scale(1 / 10),
+          area(),
+          "collectable",
+        ]);
+        obstacleArr[randomLevel][randomPos] = "c";
+        packagesNeeded--;
+      } else if (obstaclesNeeded) {
+        if (genArr[randomLevel][randomPos] == " ") continue;
+        add([
+          sprite("thornBush"),
+          scale(1 / 10),
+          pos(randomPos * 199, randomLevel * 250 - 45),
+          area(),
+          "obstacle",
+          z(-1),
+        ]);
+        obstacleArr[randomLevel][randomPos] = "o";
+        obstaclesNeeded--;
+      } else if (enemiesNeeded) {
+        if (genArr[randomLevel][randomPos] == " ") continue;
+        add([
+          sprite("dog"),
+          scale(1 / 8),
+          pos(randomPos * 199 + randi(100), randomLevel * 250 - 64),
+          area(),
+          "obstacle",
+        ]);
+        obstacleArr[randomLevel][randomPos] = "e";
+        enemiesNeeded--;
+      }
+    }
   });
 
   scene("water", () => {
+    resetPlayer();
+    // Load Sprites //
+    loadSprite("seaweed", "media/obstacles/seaweed.png");
+    loadSprite("pufferfish", "media/enemies/pufferfish.png");
+    loadSprite("sand-round", "media/platforms/sand/sand-round.png");
+    loadSprite("sand-sharp-l", "media/platforms/sand/sand-sharp-r.png");
+    loadSprite("sand-sharp-r", "media/platforms/sand/sand-sharp-l.png");
+    loadSprite("sand-sharp", "media/platforms/sand/sand-sharp.png");
+    loadSprite("background", "media/backgrounds/sea-bg.png");
+
+    // Set Background //
+    add([sprite("background"), pos(-1000, -1000), z(-10)]);
     // Set Package Counter //
-    packageCounter.value = 4;
+    packageCounter.value = 3;
     packageCounter.text = `Remaining Packages: ${packageCounter.value}`;
 
     // Add Platforms //
+    let genArr = [];
+    // Add 7 Levels
+    for (let i = 0; i < numLevels; i++) {
+      let str = "";
+      let lastValue = "";
 
-    // Add Decorations //
+      // Prodecurally generate random tiles //
+      for (let j = 0; j < levelWidth; j++) {
+        if (lastValue == "l" || lastValue == "m") {
+          str += ["m", "r", "r"][randi(3)];
+        } else if (lastValue == "r" || lastValue == "s") {
+          str += " ";
+        } else {
+          str += ["l", " ", "s", " ", "l"][randi(5)];
+        }
+        lastValue = str[str.length - 1];
+      }
+      genArr.push(str);
+    }
+    let postOfficeSelection = randi(genArr[0].length);
+    while (genArr[genArr.length - 1][postOfficeSelection] == " ") {
+      postOfficeSelection = randi(genArr[0].length);
+    }
+    genArr[genArr.length - 1] =
+      genArr[genArr.length - 1].slice(0, postOfficeSelection) +
+      genArr[genArr.length - 1][postOfficeSelection].toUpperCase() +
+      genArr[genArr.length - 1].slice(postOfficeSelection + 1);
+    generatePlatforms(genArr, "sand");
 
-    // Add Obstacles //
+    // Prodcedurally Generate Packages, Obstacles, and Enemies //
+    let obstacleArr = [[], [], [], [], [], [], []];
+    obstacleArr[0][0] = "p";
 
-    // Add Enemies //
+    let packagesNeeded = packageCounter.value;
+    let obstaclesNeeded = 8;
+    let enemiesNeeded = 15;
 
-    // Add Packages //
-
-    // Add Postal Office //
+    while (packagesNeeded || obstaclesNeeded || enemiesNeeded) {
+      let randomLevel = randi(numLevels);
+      let randomPos = randi(levelWidth);
+      if (
+        genArr[randomLevel][randomPos] ===
+        genArr[randomLevel][randomPos].toUpperCase()
+      )
+        continue;
+      if (obstacleArr[randomLevel][randomPos]) continue;
+      if (packagesNeeded) {
+        add([
+          sprite("envelope"),
+          pos(randomPos * 199, randomLevel * 250 - 40),
+          scale(1 / 10),
+          area(),
+          "collectable",
+        ]);
+        obstacleArr[randomLevel][randomPos] = "c";
+        packagesNeeded--;
+      } else if (obstaclesNeeded) {
+        if (genArr[randomLevel][randomPos] == " ") continue;
+        add([
+          sprite("seaweed"),
+          scale(1 / 10),
+          pos(randomPos * 199, randomLevel * 250 - 90),
+          area(),
+          "obstacle",
+          z(-1),
+        ]);
+        obstacleArr[randomLevel][randomPos] = "o";
+        obstaclesNeeded--;
+      } else if (enemiesNeeded) {
+        if (genArr[randomLevel][randomPos] == " ") continue;
+        add([
+          sprite("pufferfish"),
+          scale(1 / 8),
+          pos(
+            randomPos * 199 + randi(100),
+            randomLevel * 250 - 64 - randi(120),
+          ),
+          area(),
+          "obstacle",
+        ]);
+        obstacleArr[randomLevel][randomPos] = "e";
+        enemiesNeeded--;
+      }
+    }
   });
 
   go("air");

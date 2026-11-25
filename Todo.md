@@ -10,7 +10,7 @@
   - Land: Grass?
   - Water: Seaweed
 - Decoration
-  - Air: Clouds
+  - Air
     - Plane
     - Rocket
   - Land: Sidewalk
